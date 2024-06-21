@@ -1,27 +1,38 @@
 // SPDX-License-Identifier: MIT
-/*
-1. Minting new tokens: The platform should be able to create new tokens and distribute them to players as rewards. Only the owner can mint tokens.
-2. Transferring tokens: Players should be able to transfer their tokens to others.
-3. Redeeming tokens: Players should be able to redeem their tokens for items in the in-game store.
-4. Checking token balance: Players should be able to check their token balance at any time.
-5. Burning tokens: Anyone should be able to burn tokens, that they own, that are no longer needed.
-*/
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract Ownable {
+    address public owner;
+
+    constructor() {
+        owner = msg.sender; // Set the deployer as the initial owner
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Ownable: caller is not the owner");
+        _;
+    }
+
+    function transferOwnership(address newOwner) public onlyOwner {
+        require(newOwner != address(0), "Ownable: new owner is the zero address");
+        owner = newOwner;
+    }
+}
 
 contract DegenToken is ERC20, Ownable {
 
     mapping(uint256 => uint256) public ShopPrices;
+    mapping(address => uint256[]) public RedeemedItems;
 
-    constructor() ERC20("Degen", "DGN") Ownable(msg.sender) {
+    constructor() ERC20("Degen", "DGN") {
+        _mint(msg.sender, 1000000 * 10 ** decimals()); // Mint initial tokens to the contract deployer
         ShopPrices[1] = 100;
         ShopPrices[2] = 60;
         ShopPrices[3] = 30;
         ShopPrices[4] = 10;
     }
-
 
     function mintDGN(address _to, uint256 _amount) public onlyOwner {
         _mint(_to, _amount);
@@ -29,8 +40,7 @@ contract DegenToken is ERC20, Ownable {
 
     function transferDGN(address _to, uint256 _amount) public {
         require(balanceOf(msg.sender) >= _amount, "Transfer Failed: Insufficient balance.");
-        approve(msg.sender, _amount);
-        transferFrom(msg.sender, _to, _amount);
+        _transfer(msg.sender, _to, _amount);
     }
 
     function showShopItems() external pure returns (string memory) {
@@ -42,22 +52,33 @@ contract DegenToken is ERC20, Ownable {
         require(ShopPrices[_item] > 0, "Item is not available.");
         require(_item <= 4, "Item is not available.");
         require(balanceOf(msg.sender) >= ShopPrices[_item], "Redeem Failed: Insufficient balance.");
-        transfer(owner(), ShopPrices[_item]);
+
+        // Transfer tokens to the contract owner
+        _transfer(msg.sender, owner, ShopPrices[_item]);
+
+        // Record redeemed item for the player
+        RedeemedItems[msg.sender].push(_item);
+
+        // Emit event for redemption
+        emit Redeem(msg.sender, _item);
     }
     
     function burnDGN(uint256 _amount) public {
         require(balanceOf(msg.sender) >= _amount, "Burn Failed: Insufficient balance.");
-        approve(msg.sender, _amount);
         _burn(msg.sender, _amount);
     }
 
     function getBalance() external view returns (uint256) {
-        return this.balanceOf(msg.sender);
+        return balanceOf(msg.sender);
     }
 
-    function decimals() override public pure returns (uint8) {
-        return 0;
+    function getRedeemedItems(address _player) external view returns (uint256[] memory) {
+        return RedeemedItems[_player];
     }
 
-    
+    function decimals() public pure override returns (uint8) {
+        return 18; // Adjust decimals as per your token requirements
+    }
+
+    event Redeem(address indexed player, uint256 item);
 }
